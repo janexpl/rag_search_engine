@@ -1,7 +1,8 @@
+import math
 import os
 import pickle
 import string
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from nltk.stem import PorterStemmer
 
@@ -14,6 +15,8 @@ class InvertedIndex:
         self.docmap: dict[int, dict] = {}
         self.index_path = os.path.join(CACHE_DIR, "index.pkl")
         self.docmap_path = os.path.join(CACHE_DIR, "docmap.pkl")
+        self.term_freq_path = os.path.join(CACHE_DIR, "term_frequencies.pkl")
+        self.term_frequency: defaultdict[str, Counter] = defaultdict(Counter)
 
     def build(self) -> None:
         movies = load_movies()
@@ -27,6 +30,7 @@ class InvertedIndex:
         tokens = tokenize_text(text)
         for token in tokens:
             self.index[token].add(doc_id)
+            self.term_frequency[token][doc_id] += 1
 
     def get_document(self, term) -> list[int]:
         doc_ids = self.index.get(term, set())
@@ -38,6 +42,8 @@ class InvertedIndex:
             pickle.dump(self.index, f)
         with open(self.docmap_path, "wb") as f:
             pickle.dump(self.docmap, f)
+        with open(self.term_freq_path, "wb") as f:
+            pickle.dump(self.term_frequency, f)
 
     def load(self) -> None:
         try:
@@ -45,8 +51,35 @@ class InvertedIndex:
                 self.index = pickle.load(f)
             with open(self.docmap_path, "rb") as f:
                 self.docmap = pickle.load(f)
+            with open(self.term_freq_path, "rb") as f:
+                self.term_frequency = pickle.load(f)
         except FileNotFoundError:
             raise FileNotFoundError("Index or docmap file not found")
+
+    def get_tf(self, term: str, doc_id: int) -> int:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("term must be a single token")
+        token = tokens[0]
+        return self.term_frequency[token][doc_id]
+
+    def get_idf(self, term: str) -> float:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("term must be a single token")
+        token = tokens[0]
+        idf = math.log((len(self.docmap) + 1) / (len(self.index[token]) + 1))
+        return idf
+
+    def get_bm25_idf(self, term: str) -> float:
+        tokens = tokenize_text(term)
+        if len(tokens) != 1:
+            raise ValueError("term must be a single token")
+        token = tokens[0]
+        df = len(self.index[token])
+        n = len(self.docmap)
+        bm25_idf = math.log((n - df + 0.5) / (df + 0.5) + 1)
+        return bm25_idf
 
     def __del__(self):
         self.save()
@@ -75,6 +108,62 @@ def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
                 if len(results) >= limit:
                     break
     return results
+
+
+def bm25_idf_command(term: str) -> float:
+    idx = InvertedIndex()
+    try:
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found")
+        exit(1)
+    bm25_idf = idx.get_bm25_idf(term)
+
+    return bm25_idf
+
+
+def bm25_tf_command(term: str, doc_id: int) -> float:
+    idx = InvertedIndex()
+    try:
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found")
+        exit(1)
+    tf = idx.get_tf(term, doc_id)
+    idf = idx.get_idf(term)
+    return tf * idf
+
+
+def tfidf_command(doc_id: int, term: str) -> float:
+    idx = InvertedIndex()
+    try:
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found")
+        exit(1)
+    tf = idx.get_tf(term, doc_id)
+    idf = idx.get_idf(term)
+    return tf * idf
+
+
+def idf_command(term: str) -> float:
+    idx = InvertedIndex()
+    try:
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found")
+        exit(1)
+    return idx.get_idf(term)
+
+
+def tf_command(doc_id: int, term: str) -> int:
+    idx = InvertedIndex()
+    try:
+        idx.load()
+    except FileNotFoundError:
+        print("Index not found")
+        exit(1)
+    return idx.get_tf(term, doc_id)
 
 
 # def has_matching_token(query_tokens: list[str], idx: InvertedIndex) -> bool:
