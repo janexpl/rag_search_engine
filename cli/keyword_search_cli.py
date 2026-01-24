@@ -4,12 +4,15 @@ import argparse
 
 from lib.keyword_search import (
     bm25_idf_command,
+    bm25_tf_command,
+    bm25search_command,
     build_command,
     idf_command,
     search_command,
     tf_command,
     tfidf_command,
 )
+from lib.search_utils import BM25_B, BM25_K1
 
 
 def main() -> None:
@@ -41,6 +44,22 @@ def main() -> None:
     )
     bm25idf_parser.add_argument("term", type=str, help="Term to calculate BM25 IDF for")
 
+    bm25_tf_parser = subparsers.add_parser(
+        "bm25tf", help="Calculate BM25 term frequency"
+    )
+    bm25_tf_parser.add_argument("doc_id", type=int, help="Document ID")
+    bm25_tf_parser.add_argument("term", type=str, help="Term to calculate BM25 TF for")
+    bm25_tf_parser.add_argument(
+        "k1", type=float, nargs="?", default=BM25_K1, help="Tunable BM25 K1 parameter"
+    )
+    bm25_tf_parser.add_argument(
+        "b", type=float, nargs="?", default=BM25_B, help="Tunable BM25 B parameter"
+    )
+
+    bm25search_parser = subparsers.add_parser(
+        "bm25search", help="Search movies using full BM25 scoring"
+    )
+    bm25search_parser.add_argument("query", type=str, help="Search query")
     args = parser.parse_args()
 
     match args.command:
@@ -72,6 +91,19 @@ def main() -> None:
             print("Calculating BM25 score...")
             bm25 = bm25_idf_command(args.term)
             print(f"BM25 score of '{args.term}': {bm25:.2f}")
+
+        case "bm25tf":
+            print("Calculating BM25 term frequency...")
+            bm25_tf = bm25_tf_command(args.term, args.doc_id, args.k1)
+            print(
+                f"BM25 TF score of '{args.term}' in document '{args.doc_id}': {bm25_tf:.2f}"
+            )
+
+        case "bm25search":
+            print("Searching for:", args.query)
+            results = bm25search_command(args.query)
+            for i, res in enumerate(results, 1):
+                print(f"{i}. ({res['id']}) {res['title']} - Score: {res['score']:.2f}")
 
         case _:
             parser.print_help()
